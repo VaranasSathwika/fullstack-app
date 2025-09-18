@@ -2,32 +2,18 @@ pipeline {
     agent any
 
     environment {
- HEAD
- HEAD
-        REGISTRY = "docker.io/your-dockerhub-username=
-        REGISTRY = "docker.io/sathwikavaranasi"
- fa14290e (Fix Jenkinsfile paths and cleanup pipeline)
-        FRONTEND_IMAGE = "frontend"
-        BACKEND_IMAGE = "backend"
-        DOCKER_CREDENTIALS = credentials('dockerhub-credentials')
-        MAVEN_HOME = tool name: 'M3', type: 'maven'
-        NODE_HOME = tool name: 'nodejs', type: 'nodejs'
-
-        REGISTRY = "docker.io"                  // or your Nexus/DockerHub registry
-        IMAGE_NAME_BACKEND = "spring-boot-backend"
-        IMAGE_NAME_FRONTEND = "react-frontend"
-        DOCKERHUB_CREDENTIALS = 'docker-cred'   // Jenkins credential ID for DockerHub/Nexus
- 02ac8caa (Add backend, frontend, docker-compose, and Jenkinsfile)
+        DOCKER_REGISTRY = "docker.io"
+        FRONTEND_IMAGE  = "sathwikavaranasi/frontend"
+        BACKEND_IMAGE   = "sathwikavaranasi/backend"
+        SONAR_HOST_URL  = "http://your-sonarqube-server" // <-- Add this
+        SONAR_AUTH_TOKEN = credentials('sonarqube-token') // <-- Use Jenkins credentials
     }
 
     stages {
         stage('Checkout') {
             steps {
- HEAD
- HEAD
-                git branch: 'main', url: 'https://github.com/your-org/your-repo.git'=
+                git branch: 'main', url: 'https://github.com/your-org/your-repo.git'
                 checkout scm
- fa14290e (Fix Jenkinsfile paths and cleanup pipeline)
             }
         }
 
@@ -52,7 +38,7 @@ pipeline {
                         npm install
                         npm run test -- --watchAll=false --ci
                     """
-                }=
+                }
                 git branch: 'main', url: 'https://github.com/your-repo.git'
             }
         }
@@ -68,34 +54,28 @@ pipeline {
             steps {
                 echo "Running Bandit scan (placeholder)..."
                 sh 'bandit -r backend || true'  // install Bandit in Jenkins agent first
- 02ac8caa (Add backend, frontend, docker-compose, and Jenkinsfile)
             }
         }
 
         stage('Build Docker Images') {
             steps {
- HEAD
                 sh """
- HEAD
                     docker build -t $REGISTRY/$FRONTEND_IMAGE:\${BUILD_NUMBER} ./frontend
                     docker build -t $REGISTRY/$BACKEND_IMAGE:\${BUILD_NUMBER} ./backend
 
                     docker build -t $REGISTRY/$FRONTEND_IMAGE:${BUILD_NUMBER} ./frontend
                     docker build -t $REGISTRY/$BACKEND_IMAGE:${BUILD_NUMBER} ./backend
- fa14290e (Fix Jenkinsfile paths and cleanup pipeline)
                 """
 
                 script {
                     sh "docker build -t $REGISTRY/$IMAGE_NAME_BACKEND:${BUILD_NUMBER} ./backend"
                     sh "docker build -t $REGISTRY/$IMAGE_NAME_FRONTEND:${BUILD_NUMBER} ./frontend"
                 }
- 02ac8caa (Add backend, frontend, docker-compose, and Jenkinsfile)
             }
         }
 
         stage('Push Docker Images') {
             steps {
- HEAD
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh """
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
@@ -107,10 +87,7 @@ pipeline {
         }
 
         stage('End-to-End Tests') {
- HEAD
-
             when { expression { fileExists('tests/e2e') } }
- fa14290e (Fix Jenkinsfile paths and cleanup pipeline)
             steps {
                 dir('tests/e2e') {
                     sh """
@@ -126,7 +103,6 @@ pipeline {
                 }
             }
         }
- HEAD
 
         stage('Security Scans') {
             parallel {
@@ -171,7 +147,21 @@ pipeline {
             }
         }
 
- fa14290e (Fix Jenkinsfile paths and cleanup pipeline)
+        stage('Build') {
+            steps {
+                echo 'Building the project...'
+            }
+        }
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                echo 'Deploying the app...'
+            }
+        }
     }
 
     post {
@@ -180,6 +170,83 @@ pipeline {
         }
     }
 }
+
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = "docker.io"
+        FRONTEND_IMAGE  = "sathwikavaranasi/frontend"
+        BACKEND_IMAGE   = "sathwikavaranasi/backend"
+        SONAR_HOST_URL  = "http://your-sonarqube-server" // <-- Add this
+        SONAR_AUTH_TOKEN = credentials('sonarqube-token') // <-- Use Jenkins credentials
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/your-org/your-repo.git'
+                checkout scm
+            }
+        }
+
+        stage('Build & Test - Backend') {
+            steps {
+                dir('backend') {
+                    sh "${MAVEN_HOME}/bin/mvn clean verify"
+                }
+            }
+            post {
+                always {
+                    junit 'backend/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Build & Test - Frontend') {
+            steps {
+                dir('frontend') {
+                    sh """
+                        export PATH=$NODE_HOME/bin:$PATH
+                        npm install
+                        npm run test -- --watchAll=false --ci
+                    """
+                }
+                git branch: 'main', url: 'https://github.com/your-repo.git'
+            }
+        }
+
+        stage('Unit Tests') {
+            steps {
+                sh 'cd backend && ./mvnw test'
+                sh 'cd frontend && npm install && npm test -- --watchAll=false'
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                echo "Running Bandit scan (placeholder)..."
+                sh 'bandit -r backend || true'  // install Bandit in Jenkins agent first
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                sh """
+                    docker build -t $REGISTRY/$FRONTEND_IMAGE:\${BUILD_NUMBER} ./frontend
+                    docker build -t $REGISTRY/$BACKEND_IMAGE:\${BUILD_NUMBER} ./backend
+
+                    docker build -t $REGISTRY/$FRONTEND_IMAGE:${BUILD_NUMBER} ./frontend
+                    docker build -t $REGISTRY/$BACKEND_IMAGE:${BUILD_NUMBER} ./backend
+                """
+
+                script {
+                    sh "docker build -t $REGISTRY/$IMAGE_NAME_BACKEND:${BUILD_NUMBER} ./backend"
+                    sh "docker build -t $REGISTRY/$IMAGE_NAME_FRONTEND:${BUILD_NUMBER} ./frontend"
+                }
+            }
+        }
+
         stage('Push Docker Images') {
             steps {
                 withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}", usernameVariable: 'USER', passwordVariable: 'PASS')]) {
